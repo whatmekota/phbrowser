@@ -1,0 +1,10 @@
+{
+  "id": "phbrowser",
+  "name": "Browser",
+  "version": "0.1.0",
+  "description": "Browse the web on playhound's stage, while tap tempo or generated motion keeps going.",
+  "author": "whatmekota",
+  "main": "index.js",
+  "api": 2,
+  "permissions": ["stage", "web"]
+}
