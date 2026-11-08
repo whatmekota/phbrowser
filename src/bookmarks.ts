@@ -5,8 +5,8 @@ export interface Bookmark {
   title: string
 }
 
-/** More than this and the row gets crowded: the oldest goes. */
-export const MAX_BOOKMARKS = 12
+/** Kept at most; past this the oldest goes. The bar scrolls, the list holds them all. */
+export const MAX_BOOKMARKS = 200
 
 /** A stored value read back as a list of bookmarks, whatever it holds. */
 export function readBookmarks(raw: unknown): Bookmark[] {
@@ -47,4 +47,28 @@ export function bookmarkLabel(b: Bookmark, max = 24): string {
     }
   }
   return label.length > max ? `${label.slice(0, max - 1).trimEnd()}…` : label
+}
+
+/** The list with this bookmark's title changed (empty: back to the site's name). */
+export function renameBookmark(list: Bookmark[], url: string, title: string): Bookmark[] {
+  return list.map(b => (b.url === url ? { ...b, title: title.trim() } : b))
+}
+
+/** The list without this bookmark. */
+export function removeBookmark(list: Bookmark[], url: string): Bookmark[] {
+  return list.filter(b => b.url !== url)
+}
+
+/** The list with this bookmark moved by `by` places (-1 up, 1 down), kept inside the list. */
+export function moveBookmark(list: Bookmark[], url: string, by: number): Bookmark[] {
+  const from = list.findIndex(b => b.url === url)
+  if (from < 0)
+    return list
+  const to = Math.max(0, Math.min(list.length - 1, from + by))
+  if (to === from)
+    return list
+  const out = [...list]
+  const [b] = out.splice(from, 1)
+  out.splice(to, 0, b)
+  return out
 }

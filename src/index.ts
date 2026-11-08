@@ -1,8 +1,8 @@
 import type { Bookmark } from './bookmarks'
 import type { PluginContext, WebViewHandle, WebViewState } from './types'
 import { addressFor, DEFAULT_HOME, DEFAULT_SEARCH, shownAddress, webUrl } from './address'
-import { bookmarkLabel, isBookmarked, readBookmarks, toggleBookmark } from './bookmarks'
-import { BACK, FORWARD, GLOBE, HOME, RELOAD, STAR, STAR_ON, STOP } from './icons'
+import { bookmarkLabel, isBookmarked, moveBookmark, readBookmarks, removeBookmark, renameBookmark, toggleBookmark } from './bookmarks'
+import { BACK, DOWN, FORWARD, GLOBE, HOME, MARKS, PENCIL, RELOAD, STAR, STAR_ON, STOP, TRASH, UP } from './icons'
 import { CSS } from './style'
 
 /**
@@ -70,15 +70,24 @@ export default function activate(ctx: PluginContext) {
           <button type="button" class="phb-btn" data-act="home" aria-label="Home" title="Home">${HOME}</button>
           <input class="phb-addr" type="text" spellcheck="false" autocomplete="off" placeholder="Search or type an address" aria-label="Address">
           <button type="button" class="phb-btn" data-act="mark" aria-label="Bookmark this page" title="Bookmark this page" aria-pressed="false">${STAR}</button>
+          <button type="button" class="phb-btn" data-act="manage" aria-label="Bookmarks" title="Bookmarks" aria-pressed="false">${MARKS}</button>
         </div>
+        <div class="phb-marks" hidden></div>
         <div class="phb-info">
           <span class="phb-title"></span>
           <button type="button" class="phb-link" data-act="retry" hidden>Try again</button>
-          <div class="phb-marks"></div>
         </div>
         <div class="phb-frame">
           <div class="phb-progress"><i></i></div>
           <div class="phb-view"></div>
+          <div class="phb-manage" hidden>
+            <div class="phb-manage-head">
+              <b>Bookmarks</b>
+              <button type="button" class="phb-pill" data-act="add">${STAR} Add this page</button>
+              <button type="button" class="phb-pill" data-act="done">Back to the page</button>
+            </div>
+            <ul class="phb-list"></ul>
+          </div>
         </div>`
       const $ = <T extends HTMLElement>(sel: string) => root.querySelector(sel) as T
       const btn = (act: string) => $<HTMLButtonElement>(`[data-act="${act}"]`)
@@ -88,6 +97,15 @@ export default function activate(ctx: PluginContext) {
       const marks = $<HTMLDivElement>('.phb-marks')
       const progress = $<HTMLDivElement>('.phb-progress')
       const frame = $<HTMLDivElement>('.phb-view')
+      const manage = $<HTMLDivElement>('.phb-manage')
+      const list = $<HTMLUListElement>('.phb-list')
+      // The bar scrolls sideways under a plain mouse wheel too.
+      marks.addEventListener('wheel', (e) => {
+        if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+          marks.scrollLeft += e.deltaY
+          e.preventDefault()
+        }
+      }, { passive: false })
 
       if (!view || view.destroyed) {
         try {
@@ -107,6 +125,102 @@ export default function activate(ctx: PluginContext) {
       v.attach(frame)
 
       let s: WebViewState = v.state()
+      /**
+       * The bookmarks list is up. It takes the page's place rather than
+       * dropping down over it: the page is a native layer above everything
+       * here, so a menu would open underneath it.
+       */
+      let managing = false
+      /** The bookmark being renamed. */
+      let renaming: string | null = null
+
+      function setManaging(on: boolean) {
+        managing = on
+        renaming = null
+        v.attach(on ? null : frame)
+        render()
+      }
+
+      function renderList() {
+        const add = btn('add')
+        add.disabled = !s.url || isBookmarked(bookmarks, s.url)
+        if (!bookmarks.length) {
+          const empty = document.createElement('li')
+          empty.className = 'phb-empty'
+          empty.textContent = 'No bookmarks yet. The star next to the address bookmarks the page you are on.'
+          list.replaceChildren(empty)
+          return
+        }
+        list.replaceChildren(...bookmarks.map((b, i) => {
+          const li = document.createElement('li')
+          li.className = 'phb-item'
+          if (renaming === b.url) {
+            const input = document.createElement('input')
+            input.className = 'phb-rename'
+            input.value = b.title
+            input.placeholder = bookmarkLabel({ url: b.url, title: '' }, 60)
+            input.setAttribute('aria-label', 'Name')
+            input.spellcheck = false
+            const commit = () => {
+              if (renaming !== b.url)
+                return
+              renaming = null
+              save(renameBookmark(bookmarks, b.url, input.value))
+            }
+            input.addEventListener('keydown', (e) => {
+              if (e.key === 'Enter')
+                commit()
+              else if (e.key === 'Escape') {
+                e.stopPropagation()
+                renaming = null
+                render()
+              }
+            })
+            input.addEventListener('blur', commit)
+            li.append(input)
+            requestAnimationFrame(() => {
+              input.focus()
+              input.select()
+            })
+            return li
+          }
+          const open = document.createElement('button')
+          open.type = 'button'
+          open.className = 'phb-open'
+          open.title = b.url
+          const name = document.createElement('span')
+          name.textContent = bookmarkLabel(b, 80)
+          const where = document.createElement('small')
+          where.textContent = shownAddress(b.url)
+          open.append(name, where)
+          open.addEventListener('click', () => {
+            setManaging(false)
+            go(b.url)
+          })
+          const tool = (icon: string, label: string, fn: () => void, disabled = false) => {
+            const t = document.createElement('button')
+            t.type = 'button'
+            t.className = 'phb-btn'
+            t.innerHTML = icon
+            t.title = label
+            t.setAttribute('aria-label', label)
+            t.disabled = disabled
+            t.addEventListener('click', fn)
+            return t
+          }
+          li.append(
+            open,
+            tool(PENCIL, 'Rename', () => {
+              renaming = b.url
+              renderList()
+            }),
+            tool(UP, 'Move up', () => save(moveBookmark(bookmarks, b.url, -1)), i === 0),
+            tool(DOWN, 'Move down', () => save(moveBookmark(bookmarks, b.url, 1)), i === bookmarks.length - 1),
+            tool(TRASH, 'Remove', () => save(removeBookmark(bookmarks, b.url))),
+          )
+          return li
+        }))
+      }
 
       function render() {
         btn('back').disabled = !s.canGoBack
@@ -134,13 +248,25 @@ export default function activate(ctx: PluginContext) {
         mark.innerHTML = marked ? STAR_ON : STAR
         mark.setAttribute('aria-label', marked ? 'Remove the bookmark' : 'Bookmark this page')
         mark.title = mark.getAttribute('aria-label')!
+        btn('manage').setAttribute('aria-pressed', String(managing))
+        frame.hidden = managing
+        manage.hidden = !managing
+        // Not while a name is being typed: the page's updates (title,
+        // loading) come all the time and would rebuild the box under it.
+        if (managing && renaming === null)
+          renderList()
+        marks.hidden = !bookmarks.length
         marks.replaceChildren(...bookmarks.map((b) => {
           const chip = document.createElement('button')
           chip.type = 'button'
           chip.className = 'phb-mark'
           chip.textContent = bookmarkLabel(b)
           chip.title = b.url
-          chip.addEventListener('click', () => go(b.url))
+          chip.addEventListener('click', () => {
+            if (managing)
+              setManaging(false)
+            go(b.url)
+          })
           return chip
         }))
       }
@@ -173,6 +299,12 @@ export default function activate(ctx: PluginContext) {
           v.reload()
         else if (act === 'mark' && s.url)
           toggleMark({ url: s.url, title: s.title })
+        else if (act === 'manage')
+          setManaging(!managing)
+        else if (act === 'done')
+          setManaging(false)
+        else if (act === 'add' && s.url && !isBookmarked(bookmarks, s.url))
+          toggleMark({ url: s.url, title: s.title })
       })
       addr.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
@@ -203,11 +335,15 @@ export default function activate(ctx: PluginContext) {
     },
   })
 
-  function toggleMark(page: Bookmark) {
-    bookmarks = toggleBookmark(bookmarks, page)
+  function save(next: Bookmark[]) {
+    bookmarks = next
     void ctx.storage.set('bookmarks', bookmarks).catch(() => {})
-    // The star says so; a toast would sit over the page and hide it for a moment.
     redraw?.()
+  }
+
+  function toggleMark(page: Bookmark) {
+    // The star says so; a toast would sit over the page and hide it for a moment.
+    save(toggleBookmark(bookmarks, page))
   }
 
   ctx.commands.register({
