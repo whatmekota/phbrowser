@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0
+
+For playhound 2.2.8 and newer (plugin API 7).
+
+- The plugin contract (`src/types.ts`) is playhound's API 7 copy. The browser works as before.
+
 ## 0.1.0
 
 First version, for playhound 2.0's desktop app.

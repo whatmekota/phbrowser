@@ -2,7 +2,7 @@
 
 **18+ only.** A web browser plugin for [playhound](https://github.com/whatmekota/playhound). It puts a real web page on playhound's stage, with an address bar, so you can browse a site while playhound's own motion keeps driving your device: the generated stroke, beat or pulse lock, a session. Those controls stay in playhound's drawer on the right, which the page never covers.
 
-Needs the playhound **2.0** desktop app. Web pages can't be shown inside playhound in a browser; there the plugin's page says so.
+Needs the playhound **2.2.8** desktop app or newer (plugin API 7). Web pages can't be shown inside playhound in a browser; there the plugin's page says so.
 
 ## Install
 
